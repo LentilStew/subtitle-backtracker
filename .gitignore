@@ -1,10 +1,15 @@
 venv/*
 videos/*
 transcripts/*
+subtitles_json/*
+atrioc_videos.pickle
+temp
+temp2
+transcripts.marisa
 transcripts-index.marisa
 data.pickle
 tmp.json
-
+notes
 #python
 # Byte-compiled / optimized / DLL files
 __pycache__/
