@@ -29,9 +29,8 @@ def load_save_videos_pickle():
     return videos
 
 
-def save_video_transcript_pickle(video_id):
-    YouTubeTranscriptApi.get_transcript(video_id)  # TODO
-
+def get_transcript(video_id):
+    return YouTubeTranscriptApi.get_transcript(video_id)  # TODO
 
 def extract_important_info(video_data):
     # Extract relevant fields from the input JSON
@@ -287,4 +286,6 @@ def bsearch_get_word_instances(
 
 
 def yt_link_format(idx,timestamp):
+    if isinstance(idx,bytes):
+        idx = idx.decode("utf-8")
     return f"https://youtu.be/{idx}?t={int(timestamp.total_seconds())}" 

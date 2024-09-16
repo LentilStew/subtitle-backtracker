@@ -10,6 +10,11 @@ transcripts-index.marisa
 data.pickle
 tmp.json
 notes
+test
+transcripts-list.marisa
+videos_json/*
+videos_json/
+test.ipynb
 #python
 # Byte-compiled / optimized / DLL files
 __pycache__/

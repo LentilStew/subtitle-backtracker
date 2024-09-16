@@ -1,4 +1,11 @@
-from TrieTranscript import TrieTranscript, binary_search_index
+from TrieTranscript import (
+    TrieTranscript,
+    binary_search_index,
+    long_id_get_id,
+    long_id_get_index_list,
+)
+from helper import get_transcript
+from TrieTranscriptIndex import TrieTranscriptIndex
 import configparser
 import os
 import srt
@@ -6,178 +13,196 @@ from typing import Union
 from datetime import datetime
 from helper import yt_link_format
 import timeit
-
-config = configparser.ConfigParser()
-config.read("config.ini")
-all_transcripts = [
-    os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], idx)
-    for idx in os.listdir(config["youtube"]["TRANSCRITPS_FOLDER"])
-]
 import marisa_trie
 import struct
-def create_trie( transcripts_paths, trie_path=None):
+import numpy as np
 
-    words_indexes = {}
-    for i, f in enumerate(transcripts_paths):
-        print(f"({i+1}/{len(transcripts_paths)}) opening {f}")
-
-        with open(f, encoding="utf-8") as fp:
-            subs = srt.parse(fp)
-
-            for sub in subs:
-                for word in sub.content.split(" "):
-                    words_indexes[word] = words_indexes.get(word,(os.path.basename(f),[]))
-                    words_indexes[word][1].append(sub.index)
-    
-    print(f"key value pairs added {len(words_indexes.keys())}")
-    key_val_pairs = []
-    for word,val in words_indexes.items():
-        idx,instances = val
-        numbers_format = f"{len(instances)}H" 
-        string_format = f"11s"    
-        packed_data = struct.pack(f"{string_format}{numbers_format}", idx.encode(),*instances)
-        
-        key_val_pairs.append(
-            (word,packed_data)
-        )
-
-    trie = marisa_trie.BytesTrie(key_val_pairs)
-
-    print(f"saving to {trie_path}")
-    trie.save(trie_path)
-
-    return trie
-
-#create_trie( all_transcripts, trie_path="./temp2")
-def get_indexes_list(trie, words:Union[str,list[str]], mutually_inclusive:bool=True):# returns paths to all instances of the word mentioned, and the index in the timestamp
-
-    if isinstance(words,str):
-        words = [words]
-
-    if mutually_inclusive:
-        res = set(idx[:11] for idx in trie.get(words[0]))
-        for word in words[1:]:
-            res.intersection_update(set(idx[:11] for idx in trie.get(word)))
-        print(res)
-        return res
-    
-list_trie = marisa_trie.BytesTrie()
-list_trie.load("./temp2")
-def list_trie_test():
-    res = get_indexes_list(trie.trie,["for","the","minions","tomorrow"])
-    print(len(res))
-
-trie = TrieTranscript(all_transcripts, "11s", config["youtube"]["MARISA_TRIE"])
-def get_indexes(trie, words:Union[str,list[str]], mutually_inclusive:bool=True):# returns paths to all instances of the word mentioned, and the index in the timestamp
-
-    if isinstance(words,str):
-        words = [words]
-
-    if mutually_inclusive:
-        res = set(idx[0] for idx in trie.get(words[0]))
-        for word in words[1:]:
-            res.intersection_update(set(idx[0] for idx in trie.get(word)))
-        return res
-# Function 1: Using get_indexes from trie
-def run_get_indexes():
-    res = get_indexes(trie.trie,["for","the","minions","tomorrow"])
-    print(len(res))
-
-trie_index = TrieTranscript(all_transcripts, "11sL", config["youtube"]["MARISA_TRIE_INDEX"])
-# Function 2: Using fast_mutually_inclusive_get_indexes from trie_index
-def run_fast_mutually_inclusive_get_indexes():
-    res =trie_index.fast_mutually_inclusive_get_indexes(["for","the","minions","tomorrow"])
-    
-    print(len(res))
-    
-    return res
-
-# Measure the execution time of each function
-print("time_get_indexes = timeit.timeit(run_get_indexes, number=1)")
-time_get_indexes = timeit.timeit(run_get_indexes, number=1)
-print("time_fast_get_indexes = timeit.timeit(run_fast_mutually_inclusive_get_indexes, number=1)")
-time_fast_get_indexes = timeit.timeit(run_fast_mutually_inclusive_get_indexes, number=1)
-print("time_fast_get_indexes2 = timeit.timeit(run_fast_mutually_inclusive_get_indexes, number=1)2")
-trie_list_time = timeit.timeit(list_trie_test, number=1)
-print("trie_list")
-
-print(f"Time taken by get_indexes: {time_get_indexes:.6f} seconds")
-print(f"Time taken by fast_mutually_inclusive_get_indexes: {time_fast_get_indexes:.6f} seconds")
-print(f"Time taken by trie_list: {trie_list_time:.6f} seconds")
-
-
-
-"""
-712
-75 {b'zs0y2kJs65o', b'f3yU2CeteOw', b'rzhPYdAX-nU', b'Ci8zrC8PTzk', b'XPTn6uEZveY', b'3j3ueKfQ-8g', b'9HcZcMaXCXU', b'rxdzysIP_uY', b'y4KacusBxnU', b'DJNTRewm_JM', b'e4VrN3OW8gQ', b'OTqC8NRktPM', b'zbDMMOtOf7g', b'RxpcdlxDeQA', b'MPdQzjja8S4', b'bDhAAoUM2JI', b'ZCTcpQXQnyg', b'GUKz8EeNGGU', b'8H0SrwCYCUM', b'emke62Upfb0', b'aNRwQhv84wc', b'wNK294yvUXQ', b'DcmkRwfhJKw', b'3wO4BMCOR5M', b'jvtDL_O3xrw', b'SqBa6K3pWGo', b'ZnVzI05c8bM', b'Mc7zdpu7dnc', b's-jYHUQgPbM', b'RatF6TDi5rc', b'RZb0KKGqb0A', b'5VAHj7JPuog', b'f_YGAVlSOYo', b'tw75aPra1no', b'Sdyx-cGCN-4', b'P3DJVLP6c9M', b'WuN-uas5A_I', b'k-0U05AdTPo', b'OK7VJjeHK0o', b'msItKMSBj4U', b'U6ByFIDk-Js', b'XT9cWKADSKo', b'lreQRJu-kYI', b'U97djgkAri4', b'a5StuTuZFNc', b'aCayq6onu7w', b'0t0gfouhYlY', b'tObrTYi2bLA', b'ZfI1B9JCjDU', b'OyEMHXEpmzU', b'o7nphpuTRcU', b'ey9JY9f_gK8', b'uhq-sEnQ5eg', b'hrjrCoyH_d4', b'eZzsc6hnyv0', b'v3PJkjC-CiE', b'8BKMNKnDE6M', b'ZqVYWchz9Es', b'qnxyylHXDlw', b'6ujWAUtidF0', b'r-apcvSS_v4', b'2BmQvpkAJB0', b'vWNbgSCZSyc', b'4ambLcTc4FQ', b'V6oY83jqfCg', b'dEc4WPYIRZY', b'wZLgo_83TNc', b'9Ru-kv5yG7I', b'cFRoIh_tPg8', b'sUPzXLCeCV0', b'AsFZ4bMTAxg', b'fDrs2maEYG4', b'l36CMfZ47mM', b'nf2adJBqCDs', b'fXGnslG0xLA'}
-time_fast_get_indexes = timeit.timeit(run_fast_mutually_inclusive_get_indexes, number=1)
-103179
-75 {b'zs0y2kJs65o', b'f3yU2CeteOw', b'Ci8zrC8PTzk', b'rzhPYdAX-nU', b'XPTn6uEZveY', b'3j3ueKfQ-8g', b'9HcZcMaXCXU', b'rxdzysIP_uY', b'y4KacusBxnU', b'DJNTRewm_JM', b'e4VrN3OW8gQ', b'OTqC8NRktPM', b'zbDMMOtOf7g', b'RxpcdlxDeQA', b'MPdQzjja8S4', b'bDhAAoUM2JI', b'ZCTcpQXQnyg', b'GUKz8EeNGGU', b'8H0SrwCYCUM', b'emke62Upfb0', b'aNRwQhv84wc', b'3wO4BMCOR5M', b'SqBa6K3pWGo', b'DcmkRwfhJKw', b'wNK294yvUXQ', b'jvtDL_O3xrw', b'ZnVzI05c8bM', b'Mc7zdpu7dnc', b's-jYHUQgPbM', b'f_YGAVlSOYo', b'RatF6TDi5rc', b'RZb0KKGqb0A', b'5VAHj7JPuog', b'tw75aPra1no', b'Sdyx-cGCN-4', b'P3DJVLP6c9M', b'WuN-uas5A_I', b'k-0U05AdTPo', b'OK7VJjeHK0o', b'XT9cWKADSKo', b'U6ByFIDk-Js', b'lreQRJu-kYI', b'msItKMSBj4U', b'U97djgkAri4', b'a5StuTuZFNc', b'tObrTYi2bLA', b'aCayq6onu7w', b'0t0gfouhYlY', b'ZfI1B9JCjDU', b'OyEMHXEpmzU', b'ey9JY9f_gK8', b'o7nphpuTRcU', b'hrjrCoyH_d4', b'uhq-sEnQ5eg', b'eZzsc6hnyv0', b'v3PJkjC-CiE', b'8BKMNKnDE6M', b'ZqVYWchz9Es', b'qnxyylHXDlw', b'6ujWAUtidF0', b'r-apcvSS_v4', b'2BmQvpkAJB0', b'vWNbgSCZSyc', b'4ambLcTc4FQ', b'V6oY83jqfCg', b'dEc4WPYIRZY', b'wZLgo_83TNc', b'9Ru-kv5yG7I', b'cFRoIh_tPg8', b'sUPzXLCeCV0', b'AsFZ4bMTAxg', b'fDrs2maEYG4', b'l36CMfZ47mM', b'nf2adJBqCDs', b'fXGnslG0xLA'}
-Time taken by get_indexes: 0.001535 seconds
-Time taken by fast_mutually_inclusive_get_indexes: 0.267985 seconds
-"""
-
-
-
-
-
-
-
-
-""" Filter by time example
-from TrieTranscript import TrieTranscript, binary_search_index
-import configparser
-import os
-import srt
 import json
-from datetime import datetime
-from helper import yt_link_format
+import time
+
 config = configparser.ConfigParser()
 config.read("config.ini")
-
-
-
-with open(config["youtube"]["ALL_VIDEOS_FORMATTED"], "r") as fp:
-    video_metadata = json.load(fp)
-
-
-
-better_date_format = "%Y-%m-%d %H:%M:%S"
-start_date_str = "2024-01-01 00:00:00"
-end_date_str = "2025-05-01 00:00:00"
-is_between_date = {}
-
-
-for _,video_data in video_metadata.items():
-    better_date_str = video_data["better_date"]
-    better_date = datetime.strptime(better_date_str, better_date_format)
-    start_date = datetime.strptime(start_date_str, better_date_format)
-    end_date = datetime.strptime(end_date_str, better_date_format)
-    if start_date <= better_date <= end_date:
-        is_between_date[video_data["id"]] = True
-    else:
-        is_between_date[video_data["id"]] = False
-
-def filter(idx,is_between_date):
-    return not is_between_date[idx]
-
-trie = TrieTranscript(all_transcripts, "<15s", config["youtube"]["MARISA_TRIE_INDEX"])
-
-sub: srt.Subtitle
-for sub,idx in trie.bsearch_transcript("hot",filter=filter,is_between_date=is_between_date):
-    print(yt_link_format (video_metadata[idx]["id"],sub.start))
-"""
-
-
-
-""" Create transcript
-config = configparser.ConfigParser()
-config.read("config.ini")
-
 all_transcripts = [
     os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], idx)
     for idx in os.listdir(config["youtube"]["TRANSCRITPS_FOLDER"])
 ]
 
-TrieTranscript.create_trie(all_transcripts,config["youtube"]["MARISA_TRIE_INDEX"],True)
+
+# with open("./test","w") as f:
+#    json.dump(get_transcript("MEZ3sKdaRXI"),f)
+
+with open("./test", "r") as f:
+    test_transcript = json.load(f)  # "MEZ3sKdaRXI"
+
+# its from _2UfRAmNZU8
+trie_list = TrieTranscript(all_transcripts, "./transcripts-list.marisa")
+import matplotlib.pyplot as plt
+
+
+def test():
+
+    all_words = [w for subtitle in test_transcript for w in subtitle["text"].split(" ")]
+    all_words_order = {}
+    for index, word in enumerate(all_words):
+        all_words_order[word] = all_words_order.get(word, [])
+        all_words_order[word].append(index)
+    print("start")
+    words_classified = trie_list.get_rarity(all_words)
+    streams_set = trie_list.get_indexes(
+        [
+            *words_classified["extremely_rare"],
+            *words_classified["very_rare"],
+            *words_classified["rare"],
+        ]
+    )
+    common_words_array = [*words_classified["very_common"], *words_classified["common"]]
+    common_words_in_order = list(filter(lambda x: x in common_words_array, all_words))
+
+    common_words = trie_list.get_indexes(
+        [
+            *words_classified["very_common"],
+            *words_classified["common"],
+            *words_classified["extremely_common"],
+            
+        ]
+    )
+
+    def find_common_elements(arr1, arr2, arr3):
+
+        # Initialize pointers for each array
+        i, j, k = 0, 0, 0
+        result = []
+
+        # Traverse all three arrays
+        while i < len(arr1) and j < len(arr2) and k < len(arr3):
+            # If elements are equal, it's a common element
+            if arr1[i] == arr2[j] == arr3[k]:
+                # Add to result and move all pointers
+                result.append(arr1[i])
+                i += 1
+                j += 1
+                k += 1
+            # Move the pointer for the smallest element
+            elif arr1[i] < arr2[j]:
+                i += 1
+            elif arr2[j] < arr3[k]:
+                j += 1
+            else:
+                k += 1
+
+        return result
+
+    def find_sections_stream(trie, words_indexes: dict, common_words):
+        stream_array = np.zeros(np.iinfo(np.dtype("uint16")).max)
+
+        for word, indexes in words_indexes.items():
+            indexes = np.frombuffer(indexes, np.dtype("uint16"))
+            for index in indexes:
+                stream_array[index] += trie.word_rarity.get(word, 0)
+
+        for start in range(len(common_words_in_order) - 3):
+            for common_index in find_common_elements(
+                np.frombuffer(
+                    common_words.get(common_words_in_order[start], b""),
+                    dtype=np.dtype("uint16"),
+                ),
+                np.frombuffer(
+                    common_words.get(common_words_in_order[start + 1], b""),
+                    dtype=np.dtype("uint16"),
+                ),
+                np.frombuffer(
+                    common_words.get(common_words_in_order[start + 2], b""),
+                    dtype=np.dtype("uint16"),
+                ),
+            ):
+                stream_array[common_index] += 0.1
+
+        clumps = []
+        in_clump = False
+        empty_count = 0
+        empty_count_limit = 2
+
+        start_index = 0
+
+        for i in range(len(stream_array)):
+            if stream_array[i] != 0 and not in_clump:
+                start_index = i
+                in_clump = True
+            elif stream_array[i] == 0 and in_clump:
+                empty_count += 1
+                if empty_count > empty_count_limit:
+                    clumps.append((start_index, i - empty_count_limit - 1))
+                    in_clump = False
+                    empty_count = 0
+
+        if in_clump:
+            clumps.append((start_index, len(stream_array) - 1))
+
+        return stream_array, clumps
+
+    biggest = 0
+    biggest_link = ""
+    print("end")
+    # Loop through each item in streams_set and plot
+    for i, (idx, words_indexes) in enumerate(streams_set.items()):
+        stream_array, clumps = find_sections_stream(
+            trie_list, words_indexes, common_words[idx]
+        )
+        for clump in clumps:
+            curr = np.sum(stream_array[clump[0] : clump[1] + 1])
+
+            if curr > biggest:
+                biggest += curr
+                subtitle = trie_list.bsearch_transcript_index(idx, clump[0])
+                subtitle2 = trie_list.bsearch_transcript_index(idx, clump[1])
+
+                biggest_link = (
+                    yt_link_format(idx, subtitle.start),
+                    subtitle2.end.total_seconds(),
+                )
+                # Sort the dictionary by values in descending order
+
+                plt.figure(figsize=(14, 7))
+                plt.plot(
+                    stream_array[0 : np.max(np.nonzero(stream_array)) + 50],
+                    marker="o",
+                    linestyle="-",
+                    color="b",
+                    label="Reverse Rarity",
+                )
+
+                plt.xlabel("Time (Sequential Order)")
+                plt.ylabel("Reverse Rarity")
+                plt.title("Time Series Plot of Reverse Word Rarity")
+                plt.grid(True)
+                plt.tight_layout()
+                plt.savefig(f"{i}foo{idx}.png")
+    print(biggest_link)
+
+
+time = timeit.timeit(test, number=1)
+print(time)
+"""
+import matplotlib.pyplot as plt
+
+reverse = trie_list.word_rarity_update()
+# Sort the dictionary by values in descending order
+sorted_reverse = dict(sorted(reverse.items(), key=lambda item: item[1], reverse=True))
+
+# Create time series data: use index as time
+times = list(range(len(sorted_reverse)))  # Creating a time axis (0, 1, 2, ..., n-1)
+values = list(sorted_reverse.values())    # Reverse rarity values
+words = list(sorted_reverse.keys())       # Words associated with the values
+
+# Plotting the time series
+plt.figure(figsize=(14, 7))
+plt.plot(times, values, marker='o', linestyle='-', color='b', label='Reverse Rarity')
+
+plt.xlabel('Time (Sequential Order)')
+plt.ylabel('Reverse Rarity')
+plt.title('Time Series Plot of Reverse Word Rarity')
+plt.grid(True)
+plt.tight_layout()
+plt.savefig('foo3.png')
+
 """
