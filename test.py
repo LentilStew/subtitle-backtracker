@@ -1,8 +1,8 @@
 from TrieTranscript import (
     TrieTranscript,
     binary_search_index,
-    long_id_get_id,
-    long_id_get_index_list,
+    raw_id_get_id,
+    raw_id_get_index_list,
 )
 from helper import get_transcript
 from TrieTranscriptIndex import TrieTranscriptIndex
@@ -16,6 +16,13 @@ import timeit
 import marisa_trie
 import struct
 import numpy as np
+
+import numpy as np
+import timeit
+
+
+
+
 
 import json
 import time
@@ -42,10 +49,7 @@ import matplotlib.pyplot as plt
 def test():
 
     all_words = [w for subtitle in test_transcript for w in subtitle["text"].split(" ")]
-    all_words_order = {}
-    for index, word in enumerate(all_words):
-        all_words_order[word] = all_words_order.get(word, [])
-        all_words_order[word].append(index)
+
     print("start")
     words_classified = trie_list.get_rarity(all_words)
     streams_set = trie_list.get_indexes(
