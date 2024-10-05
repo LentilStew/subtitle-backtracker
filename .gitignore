@@ -23,7 +23,7 @@ __pycache__/
 *.png
 # C extensions
 *.so
-
+destiny/
 # Distribution / packaging
 .Python
 build/

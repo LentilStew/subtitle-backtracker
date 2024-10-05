@@ -14,8 +14,7 @@ import numpy as np
 import json
 from functools import reduce
 import multiprocessing
-from numba import njit
-from numba import njit, types
+from numba import njit, types, cfunc, jit
 from numba.typed import Dict
 from typing import overload
 
@@ -24,7 +23,7 @@ config.read("config.ini")
 from helper import yt_link_format
 
 
-@njit(fastmath = True)
+@njit
 def drop_missing_three(arr1, arr2, arr3, buffer):
     i = j = l = 0
     while i < arr1.size and j < arr2.size and l < arr3.size:
@@ -39,8 +38,6 @@ def drop_missing_three(arr1, arr2, arr3, buffer):
             j += 1
         else:
             l += 1
-    return buffer
-
 
 
 import matplotlib.pyplot as plt
@@ -107,7 +104,7 @@ class TranscriptBuffer:
         return self.buffer
 
     def add_ntuples(self, word_index_map, transcript):
-        buffer = np.zeros(np.iinfo(self.dtype).max, dtype=np.dtype("float"))
+        buffer = np.zeros(np.iinfo(self.dtype).max, dtype=np.dtype("uint16"))
         empty = np.empty(0, dtype=self.dtype)
 
         for i in range(len(transcript) - 2):
@@ -187,21 +184,21 @@ class VideoMatcher:
         if common_words and transcript:
             tb.add_ntuples(input_data["common_words"], input_data["transcript"])
 
-        slices = [curr_slice for curr_slice in tb.get_clumps()]
-        return slices, tb
+        # slices = [curr_slice for curr_slice in tb.get_clumps()]
+        return tb.get_clumps(), tb
 
     def run(self, use_multiprocessing=True):
+        rare_word_list = [
+            *self.transcript_rarity_map["extremely_rare"],
+            *self.transcript_rarity_map["very_rare"],
+            *self.transcript_rarity_map["rare"],
+            # *self.transcript_rarity_map["very_common"],
+            # *self.transcript_rarity_map["common"],
+        ]
+        if len(rare_word_list) == 0:
+            rare_word_list = [w for w,_ in self.transcript_rarity_list[:10]]
         # Collect rare and common words
-        rare_words = self.trie.get_words_indexes(
-            [
-                *self.transcript_rarity_map["extremely_rare"],
-                *self.transcript_rarity_map["very_rare"],
-                *self.transcript_rarity_map["rare"],
-                # *self.transcript_rarity_map["very_common"],
-                # *self.transcript_rarity_map["common"],
-            ]
-        )
-
+        rare_words = self.trie.get_words_indexes(rare_word_list)
         common_words = self.trie.get_words_indexes(
             [
                 *self.transcript_rarity_map["extremely_rare"],
@@ -243,7 +240,6 @@ class VideoMatcher:
             for i in inputs:
                 results.append(self.process_index(i))
 
-        results = [r for r in results if r is not None]
         slices = [(curr_slice, tb) for slices, tb in results for curr_slice in slices]
         slices_sorted = sorted(
             slices, key=lambda i: i[1].buffer[i[0]].sum(), reverse=False
@@ -261,7 +257,9 @@ class VideoMatcher:
                 tb.idx,
             )
             for curr_slice, tb in slices_sorted
-            if curr_slice and int(tb.buffer[curr_slice].sum()) > 1
+            if curr_slice is not None and tb is not None
+        
+        #    if curr_slice and int(tb.buffer[curr_slice].sum()) > 1
         ]
 
 
@@ -279,7 +277,7 @@ if __name__ == "__main__":
         w for subtitle in test_transcript for w in subtitle["text"].split(" ")
     ]
 
-    vm = VideoMatcher(trie, test_transcript)
+    vm = VideoMatcher(trie, ["caveat"])
     print("start")
     import timeit
 

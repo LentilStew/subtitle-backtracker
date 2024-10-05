@@ -9,10 +9,28 @@ from datetime import timedelta, datetime
 from dateutil.relativedelta import relativedelta
 import marisa_trie
 import srt
+import re
+from pytube import YouTube
+from pytube import Playlist
+
+
+
 
 config = configparser.ConfigParser()
 config.read("config.ini")
+def save_playlist_pickle(file,playlist_id):
+    videos = list(
+        scrapetube.scrapetube.get_playlist(playlist_id=playlist_id)
+    )
 
+    with open(file, "wb") as fp:
+        pickle.dump(videos, fp)
+
+
+def load_playlist_pickle(file):
+    with open(file, "rb") as fp:
+        videos = pickle.load(fp)
+    return videos
 
 def save_videos_pickle():
     videos = list(
@@ -86,7 +104,7 @@ def format_videos(videos, save_file=config["youtube"]["ALL_VIDEOS_FORMATTED"]):
             json.dump(short_json_dict, fp)
 
     return short_json_dict
-format_videos(load_save_videos_pickle())
+#format_videos(load_save_videos_pickle())
 
 def load_formated_videos():
     with open(config["youtube"]["ALL_VIDEOS_FORMATTED"], "r") as fp:
@@ -137,70 +155,6 @@ def delete_empty():
 
         except Exception as err:
             print(err)
-
-
-# before running this, you should have config["youtube"]['TRANSCRITPS_FOLDER'] with all the transcripts as srts, with the name of the ids
-def create_trie(
-    output_file=None,
-    transcripts_paths=[
-        os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], file_name)
-        for file_name in os.listdir(config["youtube"]["TRANSCRITPS_FOLDER"])
-    ],
-    save_index=True,
-):
-    print("Creating Trie ~~!\n")
-
-    # marisa_trie calls struct.pack(fmt,*value) , since I want to store <11s, b"OOAOOAOOAOO", this would be split into 11 different tuples instead of 1
-    class ByteConverter:
-        def __init__(self, value):
-            self.value = value
-            self.once = True
-
-        def __iter__(self):
-            return self
-
-        def __next__(self):
-            if self.once == True:
-                self.once = False
-                return bytes(self.value, "utf-8")
-
-            raise StopIteration
-
-    if save_index:
-        fmt = "<15s"
-    else:
-        fmt = "<11s"
-
-    key_val_pairs = []
-    for i, f in enumerate(transcripts_paths):
-        print(f"({i+1}/{len(transcripts_paths)}) opening {f}")
-        with open(f, encoding="utf-8") as fp:
-            subs = srt.parse(fp)
-            for sub in subs:
-                for word in sub.content.split(" "):
-                    if save_index:
-                        new_val = (
-                            word.lower(),
-                            ByteConverter(
-                                os.path.basename(f) + format(sub.index, "04X")
-                            ),
-                        )
-                        key_val_pairs.append(new_val)
-
-                    else:
-                        key_val_pairs.append(
-                            (word.lower(), ByteConverter(os.path.basename(f)))
-                        )
-    print("")
-    print(f"key value pairs added {len(key_val_pairs)}")
-
-    trie = marisa_trie.RecordTrie(fmt, key_val_pairs)
-
-    if output_file is not None:
-        print(f"saving to {output_file}")
-        trie.save(output_file)
-
-    return trie
 
 
 def get_word_instances(word):  # old and incomplete
