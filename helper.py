@@ -243,3 +243,7 @@ def yt_link_format(idx,timestamp):
     if isinstance(idx,bytes):
         idx = idx.decode("utf-8")
     return f"https://youtu.be/{idx}?t={int(timestamp.total_seconds())}" 
+def yt_link_format_seconds(idx,timestamp):
+    if isinstance(idx,bytes):
+        idx = idx.decode("utf-8")
+    return f"https://youtu.be/{idx}?t={int(timestamp)}" 

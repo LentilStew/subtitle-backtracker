@@ -8,10 +8,52 @@ from typing import Callable, Iterator, Union, Literal
 import struct
 import configparser
 import numpy as np
+from numba.typed import Dict
+from numba import types
 
 config = configparser.ConfigParser()
 config.read("config.ini")
 
+
+def raw_id_get_id(idx_raw):
+    return idx_raw[:11]
+
+
+def raw_id_get_index_list(idx_raw):
+    numbers_raw = idx_raw[12:]  # 1 byte is padding
+    max_numbers = len(numbers_raw) // 2
+    numbers = struct.unpack(f"{max_numbers}H", numbers_raw)
+    return list(numbers)
+
+
+def raw_id_get_index_bytes(idx_raw, dtype):
+    return np.frombuffer(idx_raw, dtype=dtype, offset=12)
+
+
+def raw_id_get_id_bytes(idx_raw, dtype="uint8"):
+    return np.frombuffer(idx_raw, dtype=dtype, offset=0, count=11)
+
+
+def split_numbers(numbers_raw):
+    max_numbers = len(numbers_raw) // 2
+    numbers = struct.unpack(f"{max_numbers}H", numbers_raw)
+    return list(numbers)
+
+
+def read_subtitle(fp) -> srt.Subtitle:
+    fp.readline() #/n
+    index = fp.readline()#either index or eof
+    if index == b'':
+        return None
+
+    start, end = fp.readline().split(b" --> ")
+    content = fp.readline().decode('utf-8').strip()
+    return srt.Subtitle(
+        index=int(index),
+        start=srt.srt_timestamp_to_timedelta(start.decode("utf-8")),
+        end=srt.srt_timestamp_to_timedelta(end.decode("utf-8")),
+        content=content,
+    )
 
 def _binary_search_index(fp, search, low, high):
     def _find_next_index(fp):
@@ -41,10 +83,16 @@ def _binary_search_index(fp, search, low, high):
         mid = low + (high - low) // 2
         fp.seek(mid)
         find_next_index(fp)
-        curr_index = int(fp.readline())
+
+        line = fp.readline() # either eof or index
+        if line == b'':
+            return False
+        
+        curr_index = int(line)
 
         if search == curr_index:
             return True
+        
         elif search > curr_index:
             return _binary_search_index(fp, search, mid + 1, high)
         else:
@@ -52,62 +100,57 @@ def _binary_search_index(fp, search, low, high):
     else:
         return False
 
-
-def binary_search_index(file, index):
+def binary_search_index(file, index, index_end=0): #returns either None, or srt.Subtitle, or [srt.Subtitle 's]
     with open(file, "rb") as fp:
         if (
             index == 1
         ):  # the find_next_index can't find this, it crashesm _find_next_index finds it but is significantly slower
             fp.readline()  # skip index
             start, end = fp.readline().split(b" --> ")
-            content = fp.readline()
+            content = fp.readline().decode("utf-8").strip()
+            subtitle = srt.Subtitle(
+                index=index,
+                start=srt.srt_timestamp_to_timedelta(start.decode("utf-8")),
+                end=srt.srt_timestamp_to_timedelta(end.decode("utf-8")),
+                content=content,
+            )
         else:
             fp.seek(0, os.SEEK_END)
             file_size = fp.tell()
-
             res = _binary_search_index(fp, index, 0, file_size - 1)
 
             if res == False:
                 print(f"Subtitle not found for index {index}")
-
+                return None
             start, end = fp.readline().split(b" --> ")
-            content = fp.readline()
+            content = fp.readline().decode("utf-8").strip()
+            subtitle = srt.Subtitle(
+                index=index,
+                start=srt.srt_timestamp_to_timedelta(start.decode("utf-8")),
+                end=srt.srt_timestamp_to_timedelta(end.decode("utf-8")),
+                content=content,
+            )
 
-    return srt.Subtitle(
-        index=index,
-        start=srt.srt_timestamp_to_timedelta(start.decode("utf-8")),
-        end=srt.srt_timestamp_to_timedelta(end.decode("utf-8")),
-        content=content,
-    )
+        if index_end != 0 and index_end > index:
+            last_subtitle = subtitle
+            subtitles = [subtitle]
 
+            while last_subtitle.index <= index_end:
+                last_subtitle = read_subtitle(fp)
+                if last_subtitle is None:
+                    break
+                subtitles.append(last_subtitle)
 
-def raw_id_get_id(idx_raw):
-    return idx_raw[:11]
-
-def raw_id_get_index_list(idx_raw):
-    numbers_raw = idx_raw[12:]  # 1 byte is padding
-    max_numbers = len(numbers_raw) // 2
-    numbers = struct.unpack(f"{max_numbers}H", numbers_raw)
-    return list(numbers)
-
-
-def raw_id_get_index_bytes(idx_raw,dtype):
-    return np.frombuffer(idx_raw, dtype=dtype, offset=12)
-
-
-def split_numbers(numbers_raw):
-    max_numbers = len(numbers_raw) // 2
-    numbers = struct.unpack(f"{max_numbers}H", numbers_raw)
-    return list(numbers)
-
+            return subtitles
+        else:
+            return subtitle
 
 class TrieTranscript(marisa_trie.BytesTrie):
     def __init__(
         self,
         transcripts_paths: list[str],
         trie_path: str,
-        word_rarity=True,
-        dtype="uint16"
+        dtype="uint16",
     ) -> None:
 
         super().__init__()
@@ -122,6 +165,8 @@ class TrieTranscript(marisa_trie.BytesTrie):
 
         self.word_rarity = self.compute_word_rarity()
 
+
+
     def compute_word_rarity(self) -> dict:
         word_rarity = {}
         count = 0
@@ -131,7 +176,7 @@ class TrieTranscript(marisa_trie.BytesTrie):
             count += 1
         for key, val in word_rarity.items():
             word_rarity[key] = 1 / val
-        
+
         return word_rarity
 
     # generator, yields subtitle for each mention of the word, in each stream
@@ -167,6 +212,7 @@ class TrieTranscript(marisa_trie.BytesTrie):
                     continue
 
                 yield res
+
     # returns subtitle, from transcript idx, in index
     def bsearch_transcript_by_index(self, idx, index) -> Union[srt.Subtitle | None]:
         # returns index from idx
@@ -181,7 +227,6 @@ class TrieTranscript(marisa_trie.BytesTrie):
             return None
 
         return res
-
 
     def get_word_rarity(self, words: Union[str, list[str]]):
         if isinstance(words, str):
@@ -220,7 +265,7 @@ class TrieTranscript(marisa_trie.BytesTrie):
                 result["extremely_rare"].append(word)
 
         return result
-    
+
     def get_mutual_word_streams(
         self, words: Union[str, list[str]]
     ):  # returns ids to all instances of the streams where all words are mentioned
@@ -237,54 +282,60 @@ class TrieTranscript(marisa_trie.BytesTrie):
             print(len(self.get(word)), word)
 
         return initial
-    def get_words_indexes(
-        self, words: Union[str, list[str]], mutually_inclusive: bool = False
-    ):  # returns paths to all instances of the word mentioned, and the index in the timestamp
 
+    def get_words_indexes_mutually_inclusive(self, words: Union[str, list[str]]):
         if isinstance(words, str):
             words = [words]
-        words_set = set(words)
-        if mutually_inclusive:
-            first_word = words_set.pop()
-            res = {
-                raw_id_get_id(raw_idx): {first_word: raw_id_get_index_bytes(raw_idx,self.dtype)}
-                for raw_idx in self.get(first_word)
+        words_set = set([word.lower() for word in words])
+
+        first_word = words_set.pop()
+        res = {
+            raw_id_get_id(raw_idx): {
+                first_word: raw_id_get_index_bytes(raw_idx, self.dtype)
             }
-            for word in words_set:
+            for raw_idx in self.get(first_word)
+        }
+        for word in words_set:
 
-                new_dict = dict()
-                raw_ids = self.get(word)
-                if raw_ids is None:
-                    return None
+            new_dict = dict()
+            raw_ids = self.get(word)
+            if raw_ids is None:
+                return None
 
-                for raw_idx in raw_ids:
+            for raw_idx in raw_ids:
 
-                    video_idx = raw_id_get_id(raw_idx)
+                video_idx = raw_id_get_id(raw_idx)
 
-                    idx_dict = res.get(video_idx, None)
-                    if idx_dict is None:
-                        continue
-                    new_dict[video_idx] = idx_dict
-
-                    new_dict[video_idx][word] = raw_id_get_index_bytes(raw_idx,self.dtype)
-
-                if not bool(new_dict):
-                    return {}
-
-                res = new_dict
-
-        else:
-            res = {}
-            for word in words_set:
-                raw_ids = self.get(word)
-
-                if raw_ids is None:
+                idx_dict = res.get(video_idx, None)
+                if idx_dict is None:
                     continue
+                new_dict[video_idx] = idx_dict
 
-                for raw_idx in raw_ids:
-                    idx = raw_id_get_id(raw_idx)
-                    res[idx] = res.get(idx, {})
-                    res[idx][word] = raw_id_get_index_bytes(raw_idx,self.dtype)
+                new_dict[video_idx][word] = raw_id_get_index_bytes(raw_idx, self.dtype)
+
+            if not bool(new_dict):
+                return {}
+
+            res = new_dict
+
+    def get_words_indexes(
+        self, words: Union[str, list[str]]
+    ):  # returns paths to all instances of the word mentioned, and the index in the timestamp
+        if isinstance(words, str):
+            words = [words]
+        words_set = set([word.lower() for word in words])
+
+        res = {}
+        for word in words_set:
+            raw_ids = self.get(word)
+
+            if not raw_ids:
+                continue
+
+            for raw_idx in raw_ids:
+                idx = raw_id_get_id(raw_idx)
+                res[idx] = res.get(idx, {})
+                res[idx][word] = raw_id_get_index_bytes(raw_idx, self.dtype)
 
         return res
 

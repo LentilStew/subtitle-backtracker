@@ -1,4 +1,4 @@
-from TrieTranscript import TrieTranscript
+from TrieTranscript import TrieTranscript, binary_search_index
 import marisa_trie
 import os
 import srt
@@ -13,78 +13,25 @@ import configparser
 import numpy as np
 import json
 from functools import reduce
-import multiprocessing
 from numba import njit, types, cfunc, jit
 from numba.typed import Dict
 from typing import overload
+import matplotlib.pyplot as plt
 
 config = configparser.ConfigParser()
 config.read("config.ini")
-from helper import yt_link_format
-
-
-@njit
-def drop_missing_three(arr1, arr2, arr3, buffer):
-    i = j = l = 0
-    while i < arr1.size and j < arr2.size and l < arr3.size:
-        if arr1[i] == arr2[j] == arr3[l]:
-            buffer[arr1[i]] += 1
-            i += 1
-            j += 1
-            l += 1
-        elif arr1[i] < arr2[j]:
-            i += 1
-        elif arr2[j] < arr3[l]:
-            j += 1
-        else:
-            l += 1
-
-
-import matplotlib.pyplot as plt
+from helper import yt_link_format, yt_link_format_seconds
+from math_helper import *
+import multiprocessing as mp
+import time
 
 
 class TranscriptBuffer:
-    def __init__(self, idx="", dtype="uint16") -> None:
-        self.idx = idx
+    def __init__(self, buffer, dtype="uint16", ntuple_value=0.1) -> None:
+        self.buffer = buffer
         self.dtype = np.dtype(dtype)
-        self.buffer = np.zeros(np.iinfo(self.dtype).max)
-        self.NTUPLE_VALUE = 0.1
-
-    def graph_buffer(self):
-        plt.figure(figsize=(10, 6))
-
-        # Plot the buffer with an old-school aesthetic
-        plt.plot(
-            self.buffer[0 : np.max(np.nonzero(self.buffer)) + 50],
-            color="dodgerblue",
-            linestyle="-",
-            marker="o",
-            markersize=2,
-        )
-
-        # Add gridlines for that classic look
-        plt.grid(True, linestyle="--", color="gray", alpha=0.7)
-
-        # Set retro fonts
-        plt.title("Transcript Buffer Visualization", fontsize=16, style="italic")
-        plt.xlabel("Index", fontsize=12)
-        plt.ylabel("Value", fontsize=12)
-
-        # Show a classic legend
-        plt.legend(["Buffer values"], loc="upper right", fontsize=10)
-
-        # Set old-school x and y ticks
-        plt.xticks(fontsize=10)
-        plt.yticks(fontsize=10)
-
-        # Show the plot
-        plt.savefig(f"{self.idx}.png")
-        return True
-
-    def add_words(self, word_index_map: dict, word_rarity_map: dict):
-        for word, indexes in word_index_map.items():
-            for index in indexes:
-                self.buffer[index] += word_rarity_map.get(word, 0)
+        self.ntuple_value = ntuple_value
+        self.slices = []
 
     def fill_gaps(self, fill_value=0.01):
 
@@ -103,10 +50,62 @@ class TranscriptBuffer:
 
         return self.buffer
 
-    def add_ntuples(self, word_index_map, transcript):
-        buffer = np.zeros(np.iinfo(self.dtype).max, dtype=np.dtype("uint16"))
-        empty = np.empty(0, dtype=self.dtype)
+    def clear_buffer(self):
+        self.buffer.fill(0)
 
+    def slice(self):
+        masked_buffer = np.ma.masked_equal(self.buffer, 0)
+        # if the buffer is empty it doesn't return a list
+
+        if (
+            masked_buffer.size == 1
+        ):  ## if buffer is empty returns of size 1 don't know whyyyyy
+            return []
+
+        self.slices = np.ma.clump_unmasked(masked_buffer)
+        return self.slices
+
+
+class TranscriptBufferStream(TranscriptBuffer):
+    def __init__(self, idx="", dtype="uint16"):
+        _dtype = np.dtype(dtype)
+        self.buffer = np.zeros(np.iinfo(_dtype).max)
+        super().__init__(self.buffer, dtype)
+        self.idx = idx
+
+    def graph_buffer(self):
+        plt.figure(figsize=(10, 6))
+        print(f"last {np.max(np.nonzero(self.buffer)) + 50}")
+        plt.plot(
+            self.buffer[0 : np.max(np.nonzero(self.buffer)) + 50],
+            color="dodgerblue",
+            linestyle="-",
+            marker="o",
+            markersize=2,
+        )
+
+        plt.grid(True, linestyle="--", color="gray", alpha=0.7)
+
+        plt.title("Transcript Buffer Visualization", fontsize=16, style="italic")
+        plt.xlabel("Index", fontsize=12)
+        plt.ylabel("Value", fontsize=12)
+
+        plt.legend(["Buffer values"], loc="upper right", fontsize=10)
+
+        plt.xticks(fontsize=10)
+        plt.yticks(fontsize=10)
+
+        plt.savefig(f"{self.idx}.png")
+        return True
+
+    def add_words(self, word_index_map: dict, word_rarity_map: dict):
+        for word, indexes in word_index_map.items():
+            for index in indexes:
+                self.buffer[index] += word_rarity_map.get(word, 0)
+
+    def add_ntuples(self, word_index_map: dict, transcript: list):
+        buffer = np.zeros(np.iinfo(self.dtype).max)
+        empty = np.zeros(0, dtype="uint16")
         for i in range(len(transcript) - 2):
             drop_missing_three(
                 word_index_map.get(transcript[i + 0], empty),
@@ -115,11 +114,58 @@ class TranscriptBuffer:
                 buffer,
             )
 
-        self.buffer += buffer * self.NTUPLE_VALUE
+        self.buffer += buffer * self.ntuple_value
 
-    def get_clumps(self):
-        masked_buffer = np.ma.masked_equal(self.buffer, 0)
-        return np.ma.clump_unmasked(masked_buffer)
+
+class TranscriptBufferQuery(TranscriptBuffer):
+    def __init__(self, transcript_query, dtype="uint16"):
+        self.transcript_query = transcript_query
+
+        self.word_index_map = {}
+        self.buffer_size = len(transcript_query)
+
+        for i, word in enumerate(transcript_query):
+
+            if word not in self.word_index_map:
+                self.word_index_map[word] = []
+
+            self.word_index_map[word].append(i)
+
+        for word in self.word_index_map:
+            self.word_index_map[word] = np.array(
+                self.word_index_map[word], dtype=np.uint16
+            )
+        self.buffer = np.zeros(self.buffer_size)
+        super().__init__(self.buffer, dtype)
+
+    def add_ntuples(self, sub_transcript: list):
+        ntuple_size = 5
+        buffer = np.zeros(self.buffer_size)
+        empty = np.zeros(0, dtype="uint16")
+
+        if len(sub_transcript) == 1:
+            return
+
+        if len(sub_transcript) < ntuple_size:
+            find_consecutive_tuples(
+                [
+                    self.word_index_map.get(sub_transcript[i], empty)
+                    for i in range(len(sub_transcript))
+                ],
+                buffer,
+            )  # SUPER EDGE CASE NEVER HAPPENS, subtitles of less than 5 words
+            return
+        for i in range(len(sub_transcript) - ntuple_size):
+            find_5tuple(
+                self.word_index_map.get(sub_transcript[i + 0], empty),
+                self.word_index_map.get(sub_transcript[i + 1], empty),
+                self.word_index_map.get(sub_transcript[i + 2], empty),
+                self.word_index_map.get(sub_transcript[i + 3], empty),
+                self.word_index_map.get(sub_transcript[i + 4], empty),
+                buffer,
+            )
+
+        self.buffer += buffer * self.ntuple_value
 
 
 def transcript_to_triplets(transcript):
@@ -156,20 +202,26 @@ class VideoMatcher:
     def __init__(
         self,
         trie: TrieTranscript,
-        transcript: list[str],  # Transcript to search, in trieTranscript
+        transcript_timestamp: list[dict],  # Transcript to search, in trieTranscript
     ) -> None:
         self.trie: TrieTranscript = trie
-        self.transcript: list[str] = transcript
-        self.transcript_rarity_map = self.trie.get_word_rarity(transcript)
+        self.transcript_timestamp = transcript_timestamp
+        self.transcript: list[str] = [
+            w
+            for subtitle in transcript_timestamp
+            for w in subtitle["text"].lower().split(" ")
+        ]
+        self.transcript_rarity_map = self.trie.get_word_rarity(self.transcript)
         self.transcript_rarity_list = sorted(
             [
                 (word, self.trie.word_rarity[word])
-                for word in set(transcript)
+                for word in set(self.transcript)
                 if word in self.trie.word_rarity
             ]
         )
+        self.tbq: TranscriptBufferQuery = TranscriptBufferQuery(self.transcript)
 
-    @staticmethod  # multiprocessing needs the function outside
+    @staticmethod  # multiprocessing needs the function as static method
     def process_index(input_data):
         idx = input_data["idx"]
         rare_words = input_data["rare_words"]
@@ -179,15 +231,17 @@ class VideoMatcher:
 
         print(input_data["i"])
 
-        tb = TranscriptBuffer(idx=idx)
+        tb = TranscriptBufferStream(idx=idx)
         tb.add_words(rare_words, word_rarity)
+
         if common_words and transcript:
             tb.add_ntuples(input_data["common_words"], input_data["transcript"])
 
-        # slices = [curr_slice for curr_slice in tb.get_clumps()]
-        return tb.get_clumps(), tb
+        tb.slice()
 
-    def run(self, use_multiprocessing=True):
+        return tb
+
+    def search(self, use_multiprocessing=False):
         rare_word_list = [
             *self.transcript_rarity_map["extremely_rare"],
             *self.transcript_rarity_map["very_rare"],
@@ -195,8 +249,9 @@ class VideoMatcher:
             # *self.transcript_rarity_map["very_common"],
             # *self.transcript_rarity_map["common"],
         ]
+
         if len(rare_word_list) == 0:
-            rare_word_list = [w for w,_ in self.transcript_rarity_list[:10]]
+            rare_word_list = [w for w, _ in self.transcript_rarity_list[:10]]
         # Collect rare and common words
         rare_words = self.trie.get_words_indexes(rare_word_list)
         common_words = self.trie.get_words_indexes(
@@ -230,7 +285,7 @@ class VideoMatcher:
         ]
 
         if use_multiprocessing:
-            with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+            with mp.Pool(processes=mp.cpu_count()) as pool:
                 results = pool.map(
                     self.process_index,
                     inputs,
@@ -240,46 +295,116 @@ class VideoMatcher:
             for i in inputs:
                 results.append(self.process_index(i))
 
-        slices = [(curr_slice, tb) for slices, tb in results for curr_slice in slices]
+        slices = [(curr_slice, tb) for tb in results for curr_slice in tb.slices]
         slices_sorted = sorted(
-            slices, key=lambda i: i[1].buffer[i[0]].sum(), reverse=False
+            slices, key=lambda i: i[1].buffer[i[0]].sum(), reverse=True
+        )
+        return slices_sorted
+
+    @staticmethod  # transcript is a list of text, transcript_timestamp, is a list of dict {text,duration,start}, given an slice of the text, returns the slice but for the dict
+    def text_slice_to_subtitle_slice(s: slice, transcript_timestamp):
+        count = 0
+        new_start = -1
+        for i, subtitle in enumerate(transcript_timestamp):
+            for w in subtitle["text"].lower().split(" "):
+
+                count += 1
+
+                if s.start == count:
+                    new_start = i
+
+                if s.stop == count:
+                    return slice(new_start, i)
+
+        return None
+
+    # from an slice search back in the transcript
+    def backsearch_slice(
+        self, slice: slice, idx
+    ) -> tuple[
+        srt.Subtitle, list[slice]  # subtitle of the slice given
+    ]:  # id where the slice is from
+
+        subtitles_srt = binary_search_index(
+            self.trie.id_to_path[idx], slice.start, slice.stop
         )
 
-        [
-            print(
-                yt_link_format(
-                    tb.idx,
-                    self.trie.bsearch_transcript_by_index(
-                        tb.idx, curr_slice.start
-                    ).start,
-                ),
-                int(tb.buffer[curr_slice].sum()),
-                tb.idx,
-            )
-            for curr_slice, tb in slices_sorted
-            if curr_slice is not None and tb is not None
+        if subtitles_srt is None:
+            print(self.trie.id_to_path[idx], slice.start, slice.stop)
+            return None
+
+        subtitles = [word for sub in subtitles_srt for word in sub.content.split(" ")]
+        self.tbq.add_ntuples(subtitles)
+        slices = self.tbq.slice()
+
+        if len(slices) == 0:
+            return None
+
+        res = (
+            subtitles_srt,
+            [
+                VideoMatcher.text_slice_to_subtitle_slice(s, self.transcript_timestamp)
+                for s in sorted(slices, key=lambda s: sum(self.tbq.buffer[s]))
+            ],
+        )
+
+        self.tbq.clear_buffer()
+        return res
+
+
+
+
+all_transcripts = [
+    os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], idx)
+    for idx in os.listdir(config["youtube"]["TRANSCRITPS_FOLDER"])
+]
+trie = TrieTranscript(all_transcripts, "./transcripts-list.marisa")
+# https://www.youtube.com/watch?v=MEZ3sKdaRXI
+with open("./test", "r") as f:
+    test_transcript_json = json.load(f)
+
+def main():
+
+
+    vm = VideoMatcher(trie, test_transcript_json)
+    print("start")
+    res = vm.search()
+
+    for slice, tb in res:
         
-        #    if curr_slice and int(tb.buffer[curr_slice].sum()) > 1
-        ]
+        if not sum(tb.buffer[slice]) > 1 :
+            break
 
+        res2 = vm.backsearch_slice(slice=slice, idx=tb.idx)
+        if res2 is None:
+            continue
 
-from helper import get_transcript
+        subtitles, query_slices = res2
+
+        subtitles = [word for sub in subtitles for word in sub.content.split(" ")]
+        """
+        print(" ".join(subtitles))
+        print(yt_link_format(
+                    tb.idx,
+                    
+                    trie.bsearch_transcript_by_index(tb.idx,slice.start).start,
+                ))
+        print(yt_link_format(
+            tb.idx,
+            
+            trie.bsearch_transcript_by_index(tb.idx,slice.stop).start,
+        ))
+        for query_slice in query_slices:
+            print(
+                "\t",
+                yt_link_format_seconds(
+                    "MEZ3sKdaRXI",
+                    test_transcript_json[query_slice.start]["start"],
+                ),
+            )
+        """
 
 if __name__ == "__main__":
-    all_transcripts = [
-        os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], idx)
-        for idx in os.listdir(config["youtube"]["TRANSCRITPS_FOLDER"])
-    ]
-    trie = TrieTranscript(all_transcripts, "./transcripts-list.marisa")
-    with open("./test", "r") as f:
-        test_transcript = json.load(f)
-    test_transcript = [
-        w for subtitle in test_transcript for w in subtitle["text"].split(" ")
-    ]
-
-    vm = VideoMatcher(trie, ["caveat"])
-    print("start")
-    import timeit
-
-    time = timeit.timeit(vm.run, number=1)
-    print(f"finished multithreading in {time}")
+    from timeit import timeit
+    time = timeit(main,number=1)
+    print(time)
