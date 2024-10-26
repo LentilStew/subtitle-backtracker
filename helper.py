@@ -13,15 +13,19 @@ import re
 from pytube import YouTube
 from pytube import Playlist
 
-
-
+text_to_words = lambda text: [
+    word 
+    for word in text.split(" ")
+]
+# formats word for search in trie
+format_word_trie = lambda word : word.lower()
 
 config = configparser.ConfigParser()
 config.read("config.ini")
-def save_playlist_pickle(file,playlist_id):
-    videos = list(
-        scrapetube.scrapetube.get_playlist(playlist_id=playlist_id)
-    )
+
+
+def save_playlist_pickle(file, playlist_id):
+    videos = list(scrapetube.scrapetube.get_playlist(playlist_id=playlist_id))
 
     with open(file, "wb") as fp:
         pickle.dump(videos, fp)
@@ -31,6 +35,7 @@ def load_playlist_pickle(file):
     with open(file, "rb") as fp:
         videos = pickle.load(fp)
     return videos
+
 
 def save_videos_pickle():
     videos = list(
@@ -49,6 +54,7 @@ def load_save_videos_pickle():
 
 def get_transcript(video_id):
     return YouTubeTranscriptApi.get_transcript(video_id)  # TODO
+
 
 def extract_important_info(video_data):
     # Extract relevant fields from the input JSON
@@ -98,13 +104,16 @@ def format_videos(videos, save_file=config["youtube"]["ALL_VIDEOS_FORMATTED"]):
         short_json = extract_important_info(video)
         short_json["better_date"] = better_date(short_json["date"])
         short_json_dict[short_json["id"]] = short_json
-        
+
     if save_file != None:
         with open(save_file, "w") as fp:
             json.dump(short_json_dict, fp)
 
     return short_json_dict
-#format_videos(load_save_videos_pickle())
+
+
+# format_videos(load_save_videos_pickle())
+
 
 def load_formated_videos():
     with open(config["youtube"]["ALL_VIDEOS_FORMATTED"], "r") as fp:
@@ -209,7 +218,7 @@ def binary_search_index(file, index):
         file_size = fp.tell()
 
         res = _binary_search_index(fp, index, 0, file_size - 1)
-        
+
         if res == False:
             print(f"Subtitle not found for index {index}")
 
@@ -239,11 +248,13 @@ def bsearch_get_word_instances(
         yield binary_search_index(subs_path, index)
 
 
-def yt_link_format(idx,timestamp):
-    if isinstance(idx,bytes):
+def yt_link_format(idx, timestamp):
+    if isinstance(idx, bytes):
         idx = idx.decode("utf-8")
-    return f"https://youtu.be/{idx}?t={int(timestamp.total_seconds())}" 
-def yt_link_format_seconds(idx,timestamp):
-    if isinstance(idx,bytes):
+    return f"https://youtu.be/{idx}?t={int(timestamp.total_seconds())}"
+
+
+def yt_link_format_seconds(idx, timestamp):
+    if isinstance(idx, bytes):
         idx = idx.decode("utf-8")
-    return f"https://youtu.be/{idx}?t={int(timestamp)}" 
+    return f"https://youtu.be/{idx}?t={int(timestamp)}"

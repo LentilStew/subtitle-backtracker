@@ -66,6 +66,31 @@ class TranscriptBuffer:
         return self.slices
 
 
+test_count = 0
+
+
+def save_test(arr1, arr2, arr3, arr4):
+    global test_count
+    
+    if test_count == 100:
+        exit(0)
+
+    if arr1.size == 0 or arr2.size == 0 or arr3.size == 0:
+        return
+
+    with open(f"./c/tests/test{test_count}", "wb") as f:
+        test_count += 1
+
+        f.write(struct.pack("L", arr1.size))
+        f.write(struct.pack("L", arr2.size))
+        f.write(struct.pack("L", arr3.size))
+        f.write(struct.pack("L", arr4.size))
+        f.write(arr1)
+        f.write(arr2)
+        f.write(arr3)
+        f.write(arr4)
+
+
 class TranscriptBufferStream(TranscriptBuffer):
     def __init__(self, idx="", dtype="uint16"):
         _dtype = np.dtype(dtype)
@@ -113,7 +138,7 @@ class TranscriptBufferStream(TranscriptBuffer):
                 word_index_map.get(transcript[i + 2], empty),
                 buffer,
             )
-
+            
         self.buffer += buffer * self.ntuple_value
 
 
@@ -353,26 +378,22 @@ class VideoMatcher:
 
 
 
-
-all_transcripts = [
-    os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], idx)
-    for idx in os.listdir(config["youtube"]["TRANSCRITPS_FOLDER"])
-]
-trie = TrieTranscript(all_transcripts, "./transcripts-list.marisa")
-# https://www.youtube.com/watch?v=MEZ3sKdaRXI
-with open("./test", "r") as f:
-    test_transcript_json = json.load(f)
-
 def main():
-
+    all_transcripts = [
+        os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], idx)
+        for idx in os.listdir(config["youtube"]["TRANSCRITPS_FOLDER"])
+    ]
+    trie = TrieTranscript(all_transcripts, "./transcripts-list.marisa")
+    # https://www.youtube.com/watch?v=MEZ3sKdaRXI
+    with open("./video_subs/man.json", "r") as f:
+        test_transcript_json = json.load(f)
 
     vm = VideoMatcher(trie, test_transcript_json)
     print("start")
-    res = vm.search()
+    res = vm.search(use_multiprocessing=False)
 
     for slice, tb in res:
-        
-        if not sum(tb.buffer[slice]) > 1 :
+        if not sum(tb.buffer[slice]) > 1:
             break
 
         res2 = vm.backsearch_slice(slice=slice, idx=tb.idx)
@@ -382,29 +403,35 @@ def main():
         subtitles, query_slices = res2
 
         subtitles = [word for sub in subtitles for word in sub.content.split(" ")]
-        """
         print(" ".join(subtitles))
-        print(yt_link_format(
-                    tb.idx,
-                    
-                    trie.bsearch_transcript_by_index(tb.idx,slice.start).start,
-                ))
-        print(yt_link_format(
-            tb.idx,
-            
-            trie.bsearch_transcript_by_index(tb.idx,slice.stop).start,
-        ))
+        print(
+            yt_link_format(
+                tb.idx,
+                trie.bsearch_transcript_by_index(tb.idx, slice.start).start,
+            ),
+            yt_link_format(
+                tb.idx,
+                trie.bsearch_transcript_by_index(tb.idx, slice.stop).start,
+            ),
+        )
+        from datetime import datetime
+
+        seconds = lambda t: (
+            datetime.strptime(t, "%H:%M:%S.%f") - datetime(1900, 1, 1)
+        ).total_seconds()
+
         for query_slice in query_slices:
             print(
                 "\t",
                 yt_link_format_seconds(
                     "MEZ3sKdaRXI",
-                    test_transcript_json[query_slice.start]["start"],
+                    seconds(test_transcript_json[query_slice.start]["start"]),
                 ),
             )
-        """
+
 
 if __name__ == "__main__":
     from timeit import timeit
-    time = timeit(main,number=1)
+
+    time = timeit(main, number=1)
     print(time)

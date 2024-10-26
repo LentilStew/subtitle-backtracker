@@ -41,19 +41,20 @@ def split_numbers(numbers_raw):
 
 
 def read_subtitle(fp) -> srt.Subtitle:
-    fp.readline() #/n
-    index = fp.readline()#either index or eof
-    if index == b'':
+    fp.readline()  # /n
+    index = fp.readline()  # either index or eof
+    if index == b"":
         return None
 
     start, end = fp.readline().split(b" --> ")
-    content = fp.readline().decode('utf-8').strip()
+    content = fp.readline().decode("utf-8").strip()
     return srt.Subtitle(
         index=int(index),
         start=srt.srt_timestamp_to_timedelta(start.decode("utf-8")),
         end=srt.srt_timestamp_to_timedelta(end.decode("utf-8")),
         content=content,
     )
+
 
 def _binary_search_index(fp, search, low, high):
     def _find_next_index(fp):
@@ -84,15 +85,15 @@ def _binary_search_index(fp, search, low, high):
         fp.seek(mid)
         find_next_index(fp)
 
-        line = fp.readline() # either eof or index
-        if line == b'':
+        line = fp.readline()  # either eof or index
+        if line == b"":
             return False
-        
+
         curr_index = int(line)
 
         if search == curr_index:
             return True
-        
+
         elif search > curr_index:
             return _binary_search_index(fp, search, mid + 1, high)
         else:
@@ -100,7 +101,10 @@ def _binary_search_index(fp, search, low, high):
     else:
         return False
 
-def binary_search_index(file, index, index_end=0): #returns either None, or srt.Subtitle, or [srt.Subtitle 's]
+
+def binary_search_index(
+    file, index, index_end=0
+):  # returns either None, or srt.Subtitle, or [srt.Subtitle 's]
     with open(file, "rb") as fp:
         if (
             index == 1
@@ -145,6 +149,7 @@ def binary_search_index(file, index, index_end=0): #returns either None, or srt.
         else:
             return subtitle
 
+
 class TrieTranscript(marisa_trie.BytesTrie):
     def __init__(
         self,
@@ -164,8 +169,6 @@ class TrieTranscript(marisa_trie.BytesTrie):
         self.mmap(trie_path)  # also self.load is valid
 
         self.word_rarity = self.compute_word_rarity()
-
-
 
     def compute_word_rarity(self) -> dict:
         word_rarity = {}
@@ -214,7 +217,9 @@ class TrieTranscript(marisa_trie.BytesTrie):
                 yield res
 
     # returns subtitle, from transcript idx, in index
-    def bsearch_transcript_by_index(self, idx, index) -> Union[srt.Subtitle | None]:
+    def bsearch_transcript_by_index(
+        self, idx, index, index_end=0
+    ) -> Union[srt.Subtitle | None]:
         # returns index from idx
         path = self.id_to_path.get(idx, None)
 
@@ -222,7 +227,7 @@ class TrieTranscript(marisa_trie.BytesTrie):
             print(f"transcript file not found")
             return None
         try:
-            res = binary_search_index(path, index)
+            res = binary_search_index(path, index, index_end)
         except Exception as err:
             return None
 
@@ -340,7 +345,7 @@ class TrieTranscript(marisa_trie.BytesTrie):
         return res
 
     @classmethod
-    def create_trie(cls, transcripts_paths, trie_path=None):
+    def create_trie(cls, transcripts_paths, trie_path=None, padded=False):
         words_indexes = []
         for i, f in enumerate(transcripts_paths):
             print(f"({i+1}/{len(transcripts_paths)}) opening {f}")
