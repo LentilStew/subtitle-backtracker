@@ -3,6 +3,9 @@
         "stdio.h": "c",
         "inttypes.h": "c",
         "fts.h": "c",
-        "time.h": "c"
+        "time.h": "c",
+        "compare": "c",
+        "cstdint": "c",
+        "format": "c"
     }
 }
