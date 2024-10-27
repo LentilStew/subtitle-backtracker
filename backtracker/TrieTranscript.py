@@ -1,5 +1,6 @@
 import marisa_trie
 from functools import reduce
+from backtracker.WordInstances import WordInstances
 
 # https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
 import os
@@ -13,6 +14,12 @@ from numba import types
 
 config = configparser.ConfigParser()
 config.read("config.ini")
+
+
+def split_numbers(numbers_raw):
+    max_numbers = len(numbers_raw) // 2
+    numbers = struct.unpack(f"{max_numbers}H", numbers_raw)
+    return list(numbers)
 
 
 def raw_id_get_id(idx_raw):
@@ -32,12 +39,6 @@ def raw_id_get_index_bytes(idx_raw, dtype):
 
 def raw_id_get_id_bytes(idx_raw, dtype="uint8"):
     return np.frombuffer(idx_raw, dtype=dtype, offset=0, count=11)
-
-
-def split_numbers(numbers_raw):
-    max_numbers = len(numbers_raw) // 2
-    numbers = struct.unpack(f"{max_numbers}H", numbers_raw)
-    return list(numbers)
 
 
 def read_subtitle(fp) -> srt.Subtitle:
@@ -151,67 +152,56 @@ def binary_search_index(
 
 
 class TrieTranscript(marisa_trie.BytesTrie):
-    def __init__(
-        self,
-        transcripts_paths: list[str],
-        trie_path: str,
-        dtype="uint16",
-    ) -> None:
+    def __init__(self, transcripts_paths: list[str], trie_path: str) -> None:
 
         super().__init__()
-        self.dtype = np.dtype(dtype)
         self.transcripts_paths: list[str] = transcripts_paths
 
         self.id_to_path: dict = {
             bytes(os.path.basename(path), "utf-8"): path for path in transcripts_paths
         }
 
-        self.mmap(trie_path)  # also self.load is valid
+        self.load(trie_path)  # also self.load is valid
 
         self.word_rarity = self.compute_word_rarity()
 
     def compute_word_rarity(self) -> dict:
         word_rarity = {}
-        count = 0
-        for key, val in self.iteritems():
-            word_rarity[key] = word_rarity.get(key, 0)
-            word_rarity[key] += len(val) - 12  # -12 because of the id
-            count += 1
-        for key, val in word_rarity.items():
-            word_rarity[key] = 1 / val
+
+        for word, raw in self.iteritems():
+            instances = WordInstances(raw)
+            instances.buffer
+            word_rarity[word] = word_rarity.get(word, 0)
+            word_rarity[word] += instances.count
+
+        for word, val in word_rarity.items():
+            word_rarity[word] = 1 / val
 
         return word_rarity
 
     # generator, yields subtitle for each mention of the word, in each stream
     # TODO add option to get multiple subtitles, i.e 3 after
     def bsearch_transcripts_by_word(
-        self,
-        word,
-        filter=lambda id, *args, **kwargs: False,  # if true it's skipped
-        *args,
-        **kwargs,  # this function is called before searching for the word, args and kwargs are passed to the function
+        self, word
     ) -> Union[Iterator[tuple[srt.Subtitle, str]] | None]:
 
-        ids = self.get(word.lower())
-        if ids is None:
+        raw_results = self.get(word.lower())
+        if raw_results is None:
             return
 
-        for value in ids:
-            id = raw_id_get_id(value)
-            indexes = raw_id_get_index_list(value)
-            for index in indexes:
-                if filter(id, *args, **kwargs):
-                    continue
+        for raw_result in raw_results:
+            wi = WordInstances(raw_result)
+            for index in wi:
 
-                path = self.id_to_path.get(id, None)
+                path = self.id_to_path.get(wi.idx, None)
 
                 if path is None:
-                    print(f"word found in {id} but transcript file not found")
+                    print(f"word found in {wi.idx} but transcript file not found")
                     continue
                 try:
-                    res = (binary_search_index(path, index), id)
+                    res = (binary_search_index(path, index), wi.idx)
                 except Exception as err:
-                    print(err, index, word, path, id)
+                    print(err, index, word, path, wi.idx)
                     continue
 
                 yield res
@@ -332,15 +322,16 @@ class TrieTranscript(marisa_trie.BytesTrie):
 
         res = {}
         for word in words_set:
-            raw_ids = self.get(word)
+            raw_results = self.get(word)
 
-            if not raw_ids:
+            if not raw_results:
                 continue
 
-            for raw_idx in raw_ids:
-                idx = raw_id_get_id(raw_idx)
-                res[idx] = res.get(idx, {})
-                res[idx][word] = raw_id_get_index_bytes(raw_idx, self.dtype)
+            for raw_result in raw_results:
+                instances = WordInstances(raw_result)
+
+                res[instances.idx] = res.get(instances.idx, {})
+                res[instances.idx][word] = instances
 
         return res
 
@@ -363,14 +354,16 @@ class TrieTranscript(marisa_trie.BytesTrie):
 
                 for word, indexes in curr_words_indexes.items():
                     unique_indexes = sorted(set(indexes))
-                    numbers_format = f"{len(unique_indexes)}H"
-                    string_format = f"11s"
-                    packed_data = struct.pack(
-                        f"{string_format}{numbers_format}",
-                        os.path.basename(f).encode(),
-                        *unique_indexes,
+
+                    bits_instances, offset = indexes_to_flip_bits_array(unique_indexes)
+
+                    wi = WordInstances.pack(
+                        idx=os.path.basename(f).encode(),
+                        offset=offset,
+                        bits_instances=bits_instances,
                     )
-                    words_indexes.append((word, packed_data))
+
+                    words_indexes.append((word, wi.buffer))
 
         print(f"key value pairs added {len(words_indexes)}")
 

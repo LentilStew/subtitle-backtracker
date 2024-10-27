@@ -1,4 +1,4 @@
-from TrieTranscript import TrieTranscript, binary_search_index
+from backtracker.TrieTranscript import TrieTranscript, binary_search_index
 import marisa_trie
 import os
 import srt
@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 
 config = configparser.ConfigParser()
 config.read("config.ini")
-from helper import yt_link_format, yt_link_format_seconds
-from math_helper import *
+from backtracker.helper import yt_link_format, yt_link_format_seconds
+from backtracker.math_helper import *
 import multiprocessing as mp
 import time
 
@@ -324,6 +324,23 @@ class VideoMatcher:
         slices_sorted = sorted(
             slices, key=lambda i: i[1].buffer[i[0]].sum(), reverse=True
         )
+
+        [
+            print(
+                yt_link_format(
+                    tb.idx,
+                    self.trie.bsearch_transcript_by_index(
+                        tb.idx, curr_slice.start
+                    ).start,
+                ),
+                int(tb.buffer[curr_slice].sum()),
+                tb.idx,
+            )
+            for curr_slice, tb in slices_sorted
+            if curr_slice and int(tb.buffer[curr_slice].sum()) > 1
+        ]
+
+
         return slices_sorted
 
     @staticmethod  # transcript is a list of text, transcript_timestamp, is a list of dict {text,duration,start}, given an slice of the text, returns the slice but for the dict
