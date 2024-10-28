@@ -1,14 +1,17 @@
-from backtracker.TrieTranscript import TrieTranscript 
-from backtracker.VideoMatching import VideoMatcher
+from backtracker.TrieTranscript import TrieTranscript
+from backtracker.TrieSearch import TrieSearch
 import os
 import configparser
 import numpy as np
 import json
-import timeit
+from backtracker.Filter import DateFilter
+
 config = configparser.ConfigParser()
 config.read("config.ini")
-transcript_limit = 5
-trie_selected = config["youtube"]["MARISA_TRIE"]
+trie_selected = config["youtube"]["MARISA_TRIE_FAST"]
+transcript_limit = 50
+
+
 def create_trie():
     all_transcripts = sorted([
         os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], idx)
@@ -24,12 +27,19 @@ def load_trie():
     return TrieTranscript(all_transcripts[:transcript_limit],trie_selected)
 
 if __name__ == "__main__":
-    #t = create_trie()
+    #create_trie()
     t = load_trie()
+    
     with open("./data/man.json", "r") as f:
         test_transcript_json = json.load(f)
-    print("loaded trie :)")
-    def tmp():
-        VideoMatcher(t,test_transcript_json).search()
-    res = timeit.timeit(tmp,number=1)
-    print(f"Time: {res}")
+    
+    DateFilter()
+    
+    TS = TrieSearch(t,["Hello", "my", "name", "is"],filters=[])
+
+    results = TS.search()
+    for s,tb in results:
+        section = t.bsearch_transcript_slice(tb.idx,s)
+        print(tb.idx)
+        for sub in section:
+            print("\t", sub.content)

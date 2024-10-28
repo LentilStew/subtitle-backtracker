@@ -1,11 +1,14 @@
-from VideoMatching import VideoMatcher
-from TrieTranscript import TrieTranscript
-import helper
 from flask import Flask, request, jsonify
 from flask.wrappers import Request
 import os
 import configparser
 from flask import abort
+
+from video_data import db
+from backtracker.TrieTranscript import TrieTranscript
+from backtracker.TranscriptBuffer import TranscriptBufferQuery, TranscriptBufferStream
+from backtracker.TrieSearch import TrieSearch, VideoTrieSearch
+
 
 config = configparser.ConfigParser()
 config.read("config.ini")

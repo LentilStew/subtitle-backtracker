@@ -161,7 +161,7 @@ class TrieTranscript(marisa_trie.BytesTrie):
             bytes(os.path.basename(path), "utf-8"): path for path in transcripts_paths
         }
 
-        self.load(trie_path)  # also self.load is valid
+        self.mmap(trie_path)  # also self.load is valid
 
         self.word_rarity = self.compute_word_rarity()
 
@@ -218,6 +218,20 @@ class TrieTranscript(marisa_trie.BytesTrie):
             return None
         try:
             res = binary_search_index(path, index, index_end)
+        except Exception as err:
+            return None
+
+        return res
+
+    def bsearch_transcript_slice(self, idx, slice: slice) -> Union[srt.Subtitle | None]:
+        # returns index from idx
+        path = self.id_to_path.get(idx, None)
+
+        if path is None:
+            print(f"transcript file not found")
+            return None
+        try:
+            res = binary_search_index(path, slice.start, slice.stop)
         except Exception as err:
             return None
 
@@ -355,12 +369,9 @@ class TrieTranscript(marisa_trie.BytesTrie):
                 for word, indexes in curr_words_indexes.items():
                     unique_indexes = sorted(set(indexes))
 
-                    bits_instances, offset = indexes_to_flip_bits_array(unique_indexes)
-
                     wi = WordInstances.pack(
                         idx=os.path.basename(f).encode(),
-                        offset=offset,
-                        bits_instances=bits_instances,
+                        instances=unique_indexes,
                     )
 
                     words_indexes.append((word, wi.buffer))

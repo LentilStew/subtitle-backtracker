@@ -1,50 +1,21 @@
 from numba import njit, types, cfunc, jit
 import numpy as np
 
-import ctypes
-import numpy as np
-
-# Load the shared library
-drop_missing_lib = ctypes.CDLL("./backtracker/c/drop_missing_three.so")
-
-# Define the function argument types
-drop_missing_lib.drop_missing_three.argtypes = [
-    ctypes.POINTER(ctypes.c_uint8),  # arr1
-    ctypes.POINTER(ctypes.c_uint8),  # arr2
-    ctypes.POINTER(ctypes.c_uint8),  # arr3
-    ctypes.POINTER(ctypes.c_uint8),  # buffer
-    ctypes.c_int,  # size
-]
-
-
-def c_drop_missing_three(arr1, arr2, arr3, offset1, offset2, offset3, buffer):
-    overlap_start = max(offset1, offset2, offset3)
-    overlap_end = min(offset1 + arr1.size, offset2 + arr2.size, offset3 + arr3.size)
-    if overlap_start > overlap_end:
-        return
-
-    drop_missing_lib.drop_missing_three(
-        arr1[overlap_start - offset1 : overlap_end - offset1].ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
-        arr2[overlap_start - offset2 : overlap_end - offset2].ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
-        arr3[overlap_start - offset3 : overlap_end - offset3].ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
-        buffer[overlap_start * 8: overlap_end *8].ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
-        overlap_end-overlap_start,
-    )
-
-
-# @njit(cache=True)
-def drop_missing_three(arr1, arr2, arr3, offset1, offset2, offset3, buffer):
-    overlap_start = max(offset1, offset2, offset3)
-    overlap_end = min(offset1 + arr1.size, offset2 + arr2.size, offset3 + arr3.size)
-    if overlap_start > overlap_end:
-        return
-
-    tmp_buffer = (
-        arr1[overlap_start - offset1 : overlap_end - offset1]
-        & arr2[overlap_start - offset2 : overlap_end - offset2]
-        & arr3[overlap_start - offset3 : overlap_end - offset3]
-    )
-    buffer[overlap_start * 8 : overlap_end * 8] += np.unpackbits(tmp_buffer)
+@njit()
+def drop_missing_three(arr1, arr2, arr3, buffer):
+    i = j = l = 0
+    while i < arr1.size and j < arr2.size and l < arr3.size:
+        if arr1[i] == arr2[j] == arr3[l]:
+            buffer[arr1[i]] += 1
+            i += 1
+            j += 1
+            l += 1
+        elif arr1[i] < arr2[j]:
+            i += 1
+        elif arr2[j] < arr3[l]:
+            j += 1
+        else:
+            l += 1
 
 
 @njit
