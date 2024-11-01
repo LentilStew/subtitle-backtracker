@@ -1,8 +1,59 @@
 from numba import njit, types, cfunc, jit
 import numpy as np
 
-@njit()
 def drop_missing_three(arr1, arr2, arr3, buffer):
+    end = min(arr1[-1], arr2[-1], arr3[-1])
+
+    if arr2[0] > arr1[0]:
+        tmp = arr2
+        arr2 = arr1
+        arr1 = tmp
+
+    if arr3[0] > arr1[0]:
+        tmp = arr3
+        arr3 = arr1
+        arr1 = tmp
+
+    start = arr1[0]
+
+    if end < start:
+        return
+
+    j = 0
+    while arr2[j] < start:
+        j += 1
+    l = 0
+    while arr3[l] < start:
+        l += 1
+
+
+    i = 0
+    while 1:
+        if arr1[i] == arr2[j] == arr3[l]:
+            buffer[arr1[i]] += 1
+            if arr1[i] == end:
+                break
+
+            i += 1
+            j += 1
+            l += 1
+
+        elif arr1[i] < arr2[j]:
+            if arr1[i] >= end:
+                break
+            i += 1
+        elif arr2[j] < arr3[l]:
+            if arr2[j] >= end:
+                break
+            j += 1
+        else:
+            if arr3[l] >= end:
+                break
+            l += 1
+
+
+@njit()
+def drop_missing_three_old(arr1, arr2, arr3, buffer):
     i = j = l = 0
     while i < arr1.size and j < arr2.size and l < arr3.size:
         if arr1[i] == arr2[j] == arr3[l]:

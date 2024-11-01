@@ -4,7 +4,7 @@ import configparser
 from types import MappingProxyType
 config = configparser.ConfigParser()
 config.read("./config.ini")
-import io
+
 
 
 class VideoSubtitle(TypedDict):
@@ -12,7 +12,8 @@ class VideoSubtitle(TypedDict):
     type: str
     language: str
 
-class VideoInfo(TypedDict):
+
+class VideoDict(TypedDict):
     title: str
     type: str
     id: str
@@ -49,26 +50,34 @@ class VideoInfo(TypedDict):
     hashtags: List[str]
     formats: List[str]
 
-class Video:
-    def __init__(self, video_info: VideoInfo, subtitles_file: io.TextIOWrapper):
-        self.video_info: VideoInfo = video_info
-        self.subtitles_file: io.TextIOWrapper = subtitles_file
+
+class VideoData:
+    def __init__(self, video_info: VideoDict, transcript_srt: str):
+        self.video_info: VideoDict = video_info
+        self.transcript_srt = transcript_srt
 
     @classmethod
-    def create(cls, video_info: VideoInfo):
+    def create(cls, video_info: VideoDict):
+        
+        if not "subtitles" in video_info:
+            return None
+         
         for sub in video_info["subtitles"]:
-            if "srt" in sub["type"]:
-                return cls(video_info, sub["str"])
+            if "srt" in sub:
+                return cls(video_info, sub["srt"])
         return None
+    
+video_data: MappingProxyType[str:VideoData] = None
 
-_db: dict[str:Video]
-db:MappingProxyType[str:Video]
+def load_video_data():
+    global video_data
+    video_data_dict: dict[str:VideoData] = {}
 
-with open(config["videos-data"]["RAW_DATA"], "r") as f:
-    data: list[dict] = json.load(f)
-    for v in data:
-        res = Video.create(v)
-        if res is not None:
-          _db[v["id"]] = res
+    with open(config["videos-data"]["RAW_DATA"], "r") as f:
+        data: list[dict] = json.load(f)
+        for v in data:
+            res = VideoData.create(v)
+            if res is not None:
+                video_data_dict[v["id"]] = res
 
-db = MappingProxyType(_db)
+    video_data = MappingProxyType(video_data_dict)

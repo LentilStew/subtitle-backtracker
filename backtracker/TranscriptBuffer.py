@@ -44,9 +44,8 @@ class TranscriptBuffer:
 
 
 class TranscriptBufferStream(TranscriptBuffer):
-    def __init__(self, idx="", dtype="uint16"):
-        _dtype = np.dtype(dtype)
-        self.buffer = np.zeros(np.iinfo(_dtype).max)
+    def __init__(self, idx="", dtype="uint16",size=np.iinfo(np.dtype("uint16")).max):
+        self.buffer = np.zeros(size)
         super().__init__(self.buffer, dtype)
         self.idx = idx
 
@@ -89,7 +88,7 @@ class TranscriptBufferStream(TranscriptBuffer):
                 or transcript[i + 2] not in word_index_map
             ):
                 continue
-
+            
             drop_missing_three(
                 word_index_map.get(transcript[i + 0]).instances,
                 word_index_map.get(transcript[i + 1]).instances,

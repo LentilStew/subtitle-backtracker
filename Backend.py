@@ -4,7 +4,7 @@ import os
 import configparser
 from flask import abort
 
-from video_data import db
+from backtracker.VideoData import db
 from backtracker.TrieTranscript import TrieTranscript
 from backtracker.TranscriptBuffer import TranscriptBufferQuery, TranscriptBufferStream
 from backtracker.TrieSearch import TrieSearch, VideoTrieSearch

@@ -13,12 +13,10 @@ import re
 from pytube import YouTube
 from pytube import Playlist
 
-text_to_words = lambda text: [
-    word 
-    for word in text.split(" ")
-]
+text_to_words = lambda text: [word for word in text.lower().split(" ")]
+
 # formats word for search in trie
-format_word_trie = lambda word : word.lower()
+format_word_trie = lambda word: word.lower()
 
 config = configparser.ConfigParser()
 config.read("config.ini")
@@ -181,72 +179,6 @@ def get_word_instances(word):  # old and incomplete
             for sub in subs:
                 if word in sub.content.split(" "):
                     pass
-
-
-# If returns true fp.readline()should return timestamps, and fp.readling() should return content
-def _binary_search_index(fp, search, low, high):
-    def find_next_index(fp):
-        index = 0
-        chars = [b" ", b" "]
-
-        while True:
-            chars[0] = chars[1]  # shift
-            chars[1] = fp.read(1)
-            if chars[0] == b"\n" and chars[1] == b"\n":
-                break
-
-    if high >= low:
-        mid = low + (high - low) // 2
-        fp.seek(mid)
-        find_next_index(fp)
-        curr_index = int(fp.readline())
-
-        if search == curr_index:
-            return True
-        elif search > curr_index:
-            return _binary_search_index(fp, search, mid + 1, high)
-        else:
-            return _binary_search_index(fp, search, low, mid - 1)
-    else:
-        return False
-
-
-def binary_search_index(file, index):
-
-    with open(file, "rb") as fp:
-        fp.seek(0, os.SEEK_END)
-        file_size = fp.tell()
-
-        res = _binary_search_index(fp, index, 0, file_size - 1)
-
-        if res == False:
-            print(f"Subtitle not found for index {index}")
-
-        start, end = fp.readline().split(b" --> ")
-        content = fp.readline()
-
-    return srt.Subtitle(
-        index=index,
-        start=srt.srt_timestamp_to_timedelta(start.decode("utf-8")),
-        end=srt.srt_timestamp_to_timedelta(end.decode("utf-8")),
-        content=content,
-    )
-
-    # edge case EOF
-    # last item
-
-
-# generator returns srt.Subtitle
-def bsearch_get_word_instances(
-    word, trie, transcripts_folder=config["youtube"]["TRANSCRITPS_FOLDER"]
-):
-    ids = trie.get(word)
-    for idx in ids:
-        instance = idx[0].decode("utf-8")
-        subs_path = os.path.join(transcripts_folder, instance[:-4])
-        index = int(instance[-4:], 16)
-        yield binary_search_index(subs_path, index)
-
 
 def yt_link_format(idx, timestamp):
     if isinstance(idx, bytes):
