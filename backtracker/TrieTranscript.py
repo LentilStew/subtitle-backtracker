@@ -3,11 +3,12 @@ from functools import reduce
 from backtracker.WordInstances import WordInstances
 from typing import IO
 from backtracker.VideoData import VideoData
+from backtracker.Filter import FilterChain
 
 # https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
 import os
 import srt
-from typing import Callable, Iterator, Union, Literal, Tuple
+from typing import Callable, Iterator, Union, Literal, Tuple,Optional,List,Dict
 import struct
 import configparser
 import numpy as np
@@ -146,9 +147,9 @@ class TrieTranscript(marisa_trie.BytesTrie):
     def id_to_fp(self, idx) -> Union[io.BufferedReader, None]:
         path = self.id_to_path.get(idx)
         if path:
-            return open(path, 'rb')
+            return open(path, "rb")
         return None
-    
+
     def compute_word_rarity(self) -> dict:
         word_rarity = {}
 
@@ -209,7 +210,7 @@ class TrieTranscript(marisa_trie.BytesTrie):
     def bsearch_transcript_slice(self, idx, slice: slice) -> Union[srt.Subtitle | None]:
         try:
             with self.id_to_fp(idx=idx) as fp:
-                
+
                 res = binary_search_index(fp, slice.start, slice.stop)
 
         except TypeError as e:
@@ -310,8 +311,11 @@ class TrieTranscript(marisa_trie.BytesTrie):
             res = new_dict
     """
 
-    def get_words_indexes(
-        self, words: Union[str, list[str]], idx_word_map: Union[dict, list[dict]] = None
+    def update_idx_word_map(
+        self,
+        words: Union[str, list[str]],
+        idx_word_map: Optional[Union[Dict, List[Dict]]] = None,
+        filter: Optional[FilterChain] = None,
     ):  # idx->word->instances # can append to idx_word_map
 
         if isinstance(words, str):
@@ -319,9 +323,6 @@ class TrieTranscript(marisa_trie.BytesTrie):
 
         if idx_word_map is None:
             idx_word_map = {}
-
-        if isinstance(idx_word_map, dict):
-            idx_word_map = [idx_word_map]
 
         words_set = set([word.lower() for word in words])
 
@@ -333,11 +334,16 @@ class TrieTranscript(marisa_trie.BytesTrie):
 
             for raw_result in raw_results:
                 instances = WordInstances(raw_result)
+
+                if filter and not filter.run(instances):
+                    continue
+
+                if isinstance(idx_word_map, dict):
+                    idx_word_map.setdefault(instances.idx, {})[word] = instances
+                    continue
+
                 for map in idx_word_map:
                     map.setdefault(instances.idx, {})[word] = instances
-
-        if len(idx_word_map) == 1:
-            return idx_word_map[0]
 
         return idx_word_map
 
@@ -381,18 +387,15 @@ class TrieTranscript(marisa_trie.BytesTrie):
 
 class TrieTranscriptVideo(TrieTranscript):
     def __init__(
-        self, Video: dict[str, VideoData], trie_path: str  # map of idx to IO
+        self,
+        videos: dict[str, VideoData],
+        trie_path: str,  # map of idx to IO
     ) -> None:
 
-        super().__init__([], trie_path=trie_path)
-        self.id_to_video: dict[str:Video] = Video
-
-    def id_to_fp(self, idx) -> Union[IO, None]:
-        if idx not in self.id_to_video:
-            return None
-        video_data: VideoData = self.id_to_video.get(idx)
-
-        return io.StringIO(video_data.transcript_srt)
+        super().__init__(
+            [v.transcript_path for v in videos.values()], trie_path=trie_path
+        )
+        self.id_to_video: dict[str:VideoData] = videos
 
     @classmethod
     def create_trie(

@@ -15,7 +15,7 @@ class WordInstances:
         (self.idx,) = struct.unpack("=11s", buffer[: struct.calcsize("11s")])
         self.instances = np.frombuffer(
             buffer[struct.calcsize("=11s") :],
-            dtype=np.dtype(config["youtube"]["MARISA_TRIE_INSTANCE_TYPE"]),
+            dtype=np.dtype(config["data"]["MARISA_TRIE_INSTANCE_TYPE"]),
         )  # Error maybe padding between 11s and array
         self.buffer = buffer
 

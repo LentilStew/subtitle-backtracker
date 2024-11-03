@@ -40,12 +40,12 @@ def save_videos_pickle():
         scrapetube.get_channel(channel_url="https://www.youtube.com/@AtriocVODs")
     )
 
-    with open(config["youtube"]["ALL_VIDEOS_TEST"], "wb") as fp:
+    with open(config["data"]["ALL_VIDEOS_TEST"], "wb") as fp:
         pickle.dump(videos, fp)
 
 
 def load_save_videos_pickle():
-    with open(config["youtube"]["ALL_VIDEOS_TEST"], "rb") as fp:
+    with open(config["data"]["ALL_VIDEOS_TEST"], "rb") as fp:
         videos = pickle.load(fp)
     return videos
 
@@ -95,7 +95,7 @@ def better_date(date: str):
 
 
 # Create a file for each video, with all the data
-def format_videos(videos, save_file=config["youtube"]["ALL_VIDEOS_FORMATTED"]):
+def format_videos(videos, save_file=config["data"]["ALL_VIDEOS_FORMATTED"]):
     short_json_dict = {}
 
     for video in videos:
@@ -114,7 +114,7 @@ def format_videos(videos, save_file=config["youtube"]["ALL_VIDEOS_FORMATTED"]):
 
 
 def load_formated_videos():
-    with open(config["youtube"]["ALL_VIDEOS_FORMATTED"], "r") as fp:
+    with open(config["data"]["ALL_VIDEOS_FORMATTED"], "r") as fp:
         video_metadata = json.load(fp)
     return video_metadata
 
@@ -136,9 +136,9 @@ def transcript_to_srt(transcripts_dict):
 
 
 def all_transcript_to_srt():
-    for f in os.listdir(config["youtube"]["RAW_VIDEOS_FOLDER"]):
-        file_path = os.path.join(config["youtube"]["RAW_VIDEOS_FOLDER"], f)
-        new_file_path = os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], f)
+    for f in os.listdir(config["data"]["RAW_VIDEOS_FOLDER"]):
+        file_path = os.path.join(config["data"]["RAW_VIDEOS_FOLDER"], f)
+        new_file_path = os.path.join(config["data"]["TRANSCRITPS_FOLDER"], f)
 
         try:
             with open(file_path, "r") as fp:
@@ -153,8 +153,8 @@ def all_transcript_to_srt():
 
 
 def delete_empty():
-    for f in os.listdir(config["youtube"]["RAW_VIDEOS_FOLDER"]):
-        file_path = os.path.join(config["youtube"]["RAW_VIDEOS_FOLDER"], f)
+    for f in os.listdir(config["data"]["RAW_VIDEOS_FOLDER"]):
+        file_path = os.path.join(config["data"]["RAW_VIDEOS_FOLDER"], f)
         try:
             if os.stat(file_path).st_size == 0:
                 print(f"removing, {file_path}")
@@ -172,7 +172,7 @@ def get_word_instances(word):  # old and incomplete
     for idx in ids:
         instance = idx[0].decode("utf-8")
 
-        subs_path = os.path.join(config["youtube"]["TRANSCRITPS_FOLDER"], instance)
+        subs_path = os.path.join(config["data"]["TRANSCRITPS_FOLDER"], instance)
 
         with open(subs_path, encoding="utf-8") as fp:
             subs = srt.parse(fp)
